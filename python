@@ -1,0 +1,76 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+
+def scrape_rera_projects():
+    # Setup driver
+    options = webdriver.ChromeOptions()
+    options.add_argument("--headless")  # run in background
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+
+    try:
+        url = "https://rera.odisha.gov.in/projects/project-list"
+        driver.get(url)
+
+        # Wait until the table loads
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".project-list tbody tr"))
+        )
+
+        # Get the first 6 project rows
+        rows = driver.find_elements(By.CSS_SELECTOR, ".project-list tbody tr")[:6]
+
+        project_data = []
+
+        for i, row in enumerate(rows):
+            view_button = row.find_element(By.XPATH, ".//button[contains(text(), 'View Details')]")
+            driver.execute_script("arguments[0].click();", view_button)
+
+            # Wait for modal or new tab to load
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".nav-tabs"))
+            )
+
+            # Collect RERA Regd. No and Project Name
+            rera_no = driver.find_element(By.XPATH, "//td[contains(text(),'RERA Regd. No')]/following-sibling::td").text.strip()
+            project_name = driver.find_element(By.XPATH, "//td[contains(text(),'Project Name')]/following-sibling::td").text.strip()
+
+            # Click Promoter Details tab
+            promoter_tab = driver.find_element(By.XPATH, "//a[contains(text(),'Promoter Details')]")
+            promoter_tab.click()
+
+            time.sleep(1)
+
+            promoter_name = driver.find_element(By.XPATH, "//td[contains(text(),'Company Name')]/following-sibling::td").text.strip()
+            promoter_address = driver.find_element(By.XPATH, "//td[contains(text(),'Registered Office Address')]/following-sibling::td").text.strip()
+            gst_no = driver.find_element(By.XPATH, "//td[contains(text(),'GST No')]/following-sibling::td").text.strip()
+
+            project_data.append({
+                "RERA Regd. No": rera_no,
+                "Project Name": project_name,
+                "Promoter Name": promoter_name,
+                "Address": promoter_address,
+                "GST No": gst_no
+            })
+
+            # Close modal or go back
+            close_button = driver.find_element(By.CSS_SELECTOR, ".btn-secondary[data-bs-dismiss='modal']")
+            driver.execute_script("arguments[0].click();", close_button)
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, ".project-list tbody tr"))
+            )
+
+        return project_data
+
+    finally:
+        driver.quit()
+
+if __name__ == "__main__":
+    data = scrape_rera_projects()
+    for item in data:
+        print(item)
